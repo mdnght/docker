@@ -2,6 +2,7 @@
 
 #docker 安装
 yum -y update
+yum -y install python-devel
 yum -y install docker-io
 service docker start
 
@@ -15,13 +16,13 @@ pip install docker-compose
 cat << EOF > dockerfile
 FROM centos:latest
 
-RUN yum install -y pcre-devel openssl-devel gcc curl wget perl make \
-    cd ~ \
-    wget https://openresty.org/download/openresty-1.15.8.1.tar.gz \
-    tar -xzvf openresty-1.15.8.1.tar.gz \
-    cd openresty-1.15.8.1 \
-    ./configure \
-    gmake \
+RUN yum install -y pcre-devel openssl-devel gcc curl wget perl make 
+RUN cd ~ \\
+    wget https://openresty.org/download/openresty-1.15.8.1.tar.gz \\
+    tar -xzvf openresty-1.15.8.1.tar.gz \\
+    cd openresty-1.15.8.1 \\
+    ./configure \\
+    gmake \\
     gmake install
 RUN PATH=\$PATH:/usr/local/openresty/nginx/sbin:/usr/local/openresty/bin/
 RUN mkdir -p /lua
