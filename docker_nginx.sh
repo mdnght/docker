@@ -3,7 +3,7 @@
 #By author Baif
 
 Nginx_HOME=/data/local/nginx
-Nginx_Conf=/data/local/nginx/conf/nginx.conf
+Nginx_Conf=/data/local/nginx/conf
 Nginx_Logs=/data/logs/nginx
 Nginx_Dockername=Nginx-web
 Nginx_Port=80
@@ -24,7 +24,11 @@ if [[ ! -d ${Nginx_Logs} ]] ; then
   mkdir -p ${Nginx_Logs}  
 fi
 
+if [[ ! -d ${Nginx_Conf} ]] ; then
+  mkdir -p ${Nginx_Conf}  
+fi
+
 install_docker
 
-docker run -d -p ${Nginx_Port}:80 --name ${Nginx_Dockername} -v ${Nginx_Conf}:/etc/nginx/nginx.conf -v ${Nginx_Logs}:/var/log/nginx nginx
+docker run -d -p ${Nginx_Port}:80 --name ${Nginx_Dockername} -v ${Nginx_Conf}:/etc/nginx -v ${Nginx_Logs}:/var/log/nginx nginx
 
