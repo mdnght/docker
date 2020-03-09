@@ -1,0 +1,124 @@
+set +x
+set -e
+cd $WORKSPACE
+echo $WORKSPACE
+
+# 定义配置文件代码仓库
+CONFIG_REPOSITORY=http://zhangduanyang:dfyg%401111@git.yingu.com/bss-3.0/bss-accent-prod.git
+CONFIG_DIR=config/
+COMMON_CONFIG_DIR=bss-accent
+
+# 创建配置文件存放目录
+if [ -d ${CONFIG_DIR} ];then
+  cd ${CONFIG_DIR}
+  git pull
+else
+  mkdir ${CONFIG_DIR}
+  # git clone 配置文件
+  git clone ${CONFIG_REPOSITORY} ${CONFIG_DIR}
+fi
+
+
+ROOT_DIR=${WORKSPACE}/bss-accent
+START_ENV="prod"
+NAMESPACE="prod-acc-pay"
+REPOSITORY_BASE="registry.cn-beijing.aliyuncs.com/acc-pay"
+IMG_BASE="registry.cn-beijing.aliyuncs.com/acc-pay/base:v1.1"
+
+cd $WORKSPACE
+rm -f args_info.txt && touch args_info.txt
+
+function build_docker_file()
+{
+  _repository=$1
+  _tag=$2
+  _jar_file=$3
+  _service_name=$4
+  
+  echo "------------参数信息"
+  echo "==   REPOSITORY "${_repository}
+  echo "==          TAG "${_tag}
+  echo "==     JAR FILE "${_jar_file}
+  echo "== SERVICE NAME "${_service_name}
+  echo "-------------------------------------------------"
+  
+  cd $WORKSPACE
+  _base_name=$(basename ${_jar_file})
+  _temp_folder=tmp_docker_${_service_name}
+  rm -rf ${_temp_folder}
+  mkdir -pv ${_temp_folder}/${_service_name}
+  cd ${_temp_folder}
+  cp ${_jar_file} ./
+  cp $WORKSPACE/config/${_service_name}/* ./${_service_name}/
+  cp -a ${WORKSPACE}/config/${COMMON_CONFIG_DIR} ./
+
+  echo "-------------------------------- 准备生成Dockerfile ------------------------"
+  touch Dockerfile
+  echo "FROM ${IMG_BASE}" >> Dockerfile
+  echo "ADD  ./${_base_name} /code" >> Dockerfile
+  echo "RUN unzip -q ${_base_name}" >> Dockerfile
+  echo "ADD ./${_service_name} /data/config/${_service_name}" >> Dockerfile
+  echo "ADD ./${COMMON_CONFIG_DIR} /data/config/${COMMON_CONFIG_DIR}" >> Dockerfile
+  echo "CMD su - tomcat -c '/home/tomcat/run.sh ${START_ENV}-${_service_name} ${START_ENV}'" >> Dockerfile
+  echo "-------------------------------- Dockerfile已生成 ---------------------------"
+  
+  echo "-------------------------------- Dockerfile 信息如下-------------------------"
+  cat Dockerfile
+
+  echo "-------------------------------- 开始build镜像文件 ---------------------------"
+  sudo docker build --no-cache -t ${_repository}:${_tag} .
+  echo "-------------------------------- 镜像文件已生成 ------------------------------"
+  echo "----------------------------------------------------------------------------"
+  
+  echo "-------------------------------- 登录docker私库 -----------------------------"
+  sudo sh /data/secret/docker_login.sh
+  
+  echo "-------------------------------- 上传image镜像到私库 --------------------------"
+  echo "${_repository}:${_tag}  镜像地址"
+  sudo docker push ${_repository}:${_tag}
+  echo "-------------------------------- 上传image镜像完成 --------------------------"
+  
+  echo "-------------------------------- 删除本地image镜像 --------------------------"
+  img_id=$(sudo docker images | grep ${_repository} | grep ${_tag} | awk {'print $3'})
+  sudo docker rmi ${img_id}
+  echo "删除本地image镜像${_repository}:${_tag}已删除"
+  echo "----------------------------------------------------------------------------"
+}
+
+###############################################################
+
+function start_build()
+{
+  SERVICE_NAME=$1
+  PKG_DIR="${ROOT_DIR}/${SERVICE_NAME}/target"
+  TARGET_FILE=$(ls ${PKG_DIR}/*.war -lt | grep -v total | awk {'print $9'} | head -n 1)
+  REPOSITORY="${REPOSITORY_BASE}/${SERVICE_NAME}"
+  echo "${PKG_DIR}"
+  echo "${TARGET_FILE}"
+  echo
+  echo
+  echo "**************************************************************************"
+  echo "=========================================================================="
+  echo "============ 准备创建 DOCKER IMAGE"
+  echo "============ ${APP_NAME}"
+  echo "============ ${IMG_VERSION}"
+  echo "=========================================================================="
+  echo "=========================================================================="
+
+  if [ -f ${TARGET_FILE} ]; then
+    build_docker_file ${REPOSITORY} ${IMG_VERSION} ${TARGET_FILE} ${SERVICE_NAME};
+    echo "${REPOSITORY}:${IMG_VERSION}###${SERVICE_NAME}###${NAMESPACE}" >> $WORKSPACE/args_info.txt
+  else
+    echo "============ 未找到要部署的文件"
+    echo "============ ${PKG_DIR}"
+    exit 1
+  fi
+}
+
+
+###############################################################
+
+
+
+APP_NAME="bss-accent-acc-service"
+start_build ${APP_NAME}
