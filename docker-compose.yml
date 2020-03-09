@@ -1,0 +1,76 @@
+version: '2.0'
+services:
+    redismaster:
+        image: redis:3.0
+        container_name: base_redis
+        volumes:
+            - ./redis/:/data
+        ports:
+            - "20001:6379"
+    zk01:
+        image: zookeeper
+        restart: always
+        container_name: base_zk01
+        volumes:
+            - ./zook/zk01/data:/data
+            - ./zook/zk01/datalog:/datalog
+        ports:
+            - "20002:2181"
+        environment:
+            ZOO_MY_ID: 1
+            ZOO_SERVERS: server.1=uat_zk01:2888:3888
+    kafa01:
+        image: ches/kafka
+        container_name: base_Kafa01
+        links:
+            - zk01:zookeeper
+        ports:
+            - "20003:2181"
+        environment:
+            ZOOKEEPER_CONNECTION_STRING: '172.24.132.91:'
+            ZOOKEEPER_CHROOT: 20002
+    nginxmaster:
+        image: nginx:latest
+        restart: always
+        container_name: base_nginx_master
+        volumes:
+            - ./conf/:/etc/nginx/
+            - ./html/:/usr/share/nginx/html
+            - /data/static:/data/static
+            - /data/logs:/data/logs
+        ports:
+            - "80:80"
+            - "443:443"
+    redismaster_1:
+        image: redis:3.0
+        container_name: base_redis_1
+        volumes:
+            - ./redis_1/:/data
+        ports:
+            - "20004:6379"
+    redismaster_2:
+        image: redis:3.0
+        container_name: base_redis_2
+        volumes:
+            - ./redis_2/:/data
+        command: redis-server --requirepass myredis
+        ports:
+            - "20005:6379"
+    redismaster_3:
+        image: redis:3.0
+        container_name: base_redis_3
+        volumes:
+            - ./redis_3/:/data
+        ports:
+            - "20006:6379"
+    mysqlmaster:
+        image: mysql:5.7
+        container_name: base_mysql_ygzx
+        volumes:
+            - /etc/localtime:/etc/localtime:ro
+            - ./mysql/:/var/lib/mysql
+            - ./my.cnf:/etc/mysql/my.cnf
+        ports:
+            - "20007:3306"
+        environment:
+            MYSQL_ROOT_PASSWORD: my-secret-pw-430
