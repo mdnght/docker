@@ -1,0 +1,22 @@
+set +x
+set -e
+
+txt_file="/tmp/swap_files_from_prod/services.txt"
+echo ${txt_file}
+
+if [ -f "${txt_file}" ];then
+  salt '*' cmd.run "docker login --username zhangduanyang@dfyg --password 'NPon8d(8k7d2' registry.cn-beijing.aliyuncs.com"
+  for line in $(cat ${txt_file});
+  do
+    img_info=$(echo $line | awk -F### {'print $1'})
+    service_name=$(echo $line | awk -F### {'print $2'})
+    namespace=$(echo $line | awk -F### {'print $3'})
+    service=${pre_env}-${service_name}
+    echo ${img_info}
+    echo ${service_name}
+    echo ${namespace}
+    salt '*' cmd.run "  docker pull ${img_info}  "
+ done
+fi
+
+rm -rf /tmp/swap_files_from_prod
