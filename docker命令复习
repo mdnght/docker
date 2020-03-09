@@ -1,0 +1,13 @@
+#创建网络
+docker network create --driver bridge --subnet 172.16.1.0/24 --gateway 172.16.1.1 name
+
+#创建全局网络
+docker network create -d overlay --subnet 10.0.0.0/24 --geteway 10.0.0.1 name
+
+#
+docker run --ti --rm --link=ceshi01:ceshi01 --name ceshi02 busybox
+
+#
+docker network connet name ceshi02
+
+
