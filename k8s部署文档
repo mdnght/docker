@@ -129,7 +129,9 @@ cfssl gencert -initca ca-csr.json ｜ cfssl-json -bare ca
 #部署docker 环境
 curl -fsSL https://get.docker.com | bash -s docker --mirror Aliyun
 
-#配置  daemon.json
+#配置每台k8s集群机器的 daemon.json  (注意"bip": "$Ip" 为本机ip)
+mkdir -p /etc/docker
+mkdir -p /data/docker
 vi /etc/docker/daemon.json
 {
         "graph": "/data/docker",
@@ -140,5 +142,10 @@ vi /etc/docker/daemon.json
         "exec-opts": ["native.cgroupdriver=systemd"],
         "live-restore": true
 }
+
+#启动docker
+systemctl start docker
+
+
 
 
