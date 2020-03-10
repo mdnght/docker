@@ -98,7 +98,7 @@ wget https://pkg.cfssl.org/R1.2/cfssljson_linux-amd64 -O /usr/bin/cfssl-json
 wget wget https://pkg.cfssl.org/R1.2/cfssl-certinfo_linux-amd64 -O /usr/bin/cfssl-certinfo
 chmod +x /usr/bin/cfssl*
 mkdir /opt/certs && cd /opt/certs
-#创建CA证书的请求文件
+#创建CA证书的请求文件(生成20年有效证书)
 vi /opt/certs/ca-csr.json
 {
    "CN": "OldboyEdu",
@@ -123,6 +123,22 @@ vi /opt/certs/ca-csr.json
    }
 }
 
+#创建证书,生成ca.pem 及 ca-key.pem
+cfssl gencert -initca ca-csr.json ｜ cfssl-json -bare ca
 
+#部署docker 环境
+curl -fsSL https://get.docker.com | bash -s docker --mirror Aliyun
+
+#配置  daemon.json
+vi /etc/docker/daemon.json
+{
+        "graph": "/data/docker",
+        "storage-driver": "overlay2",
+        "insecure-mirrors": ["registry.access.redhat.com","quay.io","harbor.od.com"],
+        "registry-mirrors": ["https://q2gr04ke.mirror.aliyuncs.com"],
+        "bip": "172.7.21.1/24",
+        "exec-opts": ["native.cgroupdriver=systemd"],
+        "live-restore": true
+}
 
 
