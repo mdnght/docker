@@ -18,7 +18,7 @@ yum install bind -y
 #配置bind9(主)
 vi /etc/named.conf
 options {
-        listen-on port 53 { 0.0.0.0; };
+        listen-on port 53 { 10.4.7.11; };
         #删除ipv6的配置
         .
         .
@@ -30,8 +30,59 @@ options {
 #检查配置        
 named-checkconf
 #区域配置文件
-vi /etc/named/named.rfc1912.zone
+vi /etc/named.rfc1912.zone
+#添加主机域及业务域
+zone "host.com" IN {
+        type master;
+        file "host.com.zone"
+        allow-update { 10.4.7.11; };
+};
+
+zone "od.com" IN {
+        type master;
+        file "od.com.zone";
+        allow-update { 10.4.7.11; };
+};
+
+#编辑主机区域数据文件
 vi /var/named/host.com.zone
+#添加
+$ORIGIN host.com.
+$TTL 600        ; 10 minutes
+@       IN SOA       dns.host.com. dnsadmin.host.com. (
+                     2019061801  ; serial
+                     10800       ; refresh (3 hours)
+                     900         ; retry   (15 minutes)
+                     604800      ; expire  (1 week)
+                     86400       ; minimum (1 day)
+                     )
+            NS       dns.host.com.
+$TTL 60 ; 1 minute
+dns             A       10.4.7.11
+HDSS7-11        A       10.4.7.11
+.
+.
+.
+#编辑业务区域数据文件
+vi /var/named/od.com.zone
+#添加
+$ORIGIN od.com.
+$TTL 600        ; 10 minutes
+@       IN SOA       dns.od.com. dnsadmin.od.com. (
+                     2019061801  ; serial
+                     10800       ; refresh (3 hours)
+                     900         ; retry   (15 minutes)
+                     604800      ; expire  (1 week)
+                     86400       ; minimum (1 day)
+                     )
+            NS       dns.od.com.
+$TTL 60 ; 1 minute
+dns             A       10.4.7.11
+
+#启动bind9
+
+
+
 
 
 
