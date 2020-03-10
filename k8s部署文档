@@ -80,8 +80,10 @@ $TTL 60 ; 1 minute
 dns             A       10.4.7.11
 
 #启动bind9
+systemctl start named
 
-
+#在 /etc/reslov 里面添加,ping HDSS7-11 可通
+search host.com
 
 
 
