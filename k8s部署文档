@@ -1,0 +1,37 @@
+#etcd 部署单数台
+
+#二进制部署
+
+#安装epel-release
+yum install epel-release -y
+
+#关闭SElinux和firewalld
+setenfore 0
+systemctl stop firewalld
+
+#安装必要工具
+yum install wget net-tool telnet tree nmap sysstat lrzsz doc2unix bind-utils -y
+
+#自建dns(部署在非k8s集群)
+yum install bind -y
+
+#配置bind9(主)
+vi /etc/named.conf
+options {
+        listen-on port 53 { 0.0.0.0; };
+        #删除ipv6的配置
+        .
+        .
+        .
+        allow-query       { any; };
+        forwarders        { 114.114.114.114; };
+        recursion         yes;
+        dnssec-enable     no;
+#检查配置        
+named-checkconf
+#区域配置文件
+vi /etc/named/named.rfc1912.zone
+vi /var/named/host.com.zone
+
+
+
