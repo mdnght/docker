@@ -85,6 +85,7 @@ $TTL 600        ; 10 minutes
             NS       dns.od.com.
 $TTL 60 ; 1 minute
 dns             A       10.4.7.11
+harbor          A       10.4.7.200
 
 #启动bind9
 systemctl start named
@@ -146,7 +147,7 @@ vi /etc/docker/daemon.json
 #启动docker
 systemctl start docker
 
-#部署docker私有仓库harbor（1.7.5以后版本 之前有安全漏洞）（依赖docker-compose）
+# 110.4.7.200 部署docker私有仓库harbor（1.7.5以后版本 之前有安全漏洞）（依赖docker-compose）
 yum install docker-compose -y
 wget https://github.com/goharbor/harbor/releases/download/v1.8.5/harbor-offline-installer-v1.8.5.tgz
 tar xvf harbor-offline-installer-v1.8.5.tgz -C /opt 
@@ -164,6 +165,301 @@ location: /data/habor/logs
 /data/volume: /data/docker
 
 sh /opt/harbor/install.sh
+
+#nginx反向代理180端口
+yum install nginx -y 
+
+#配置文件
+/etc/nginx/conf.d/harbor.od.com.conf
+server {
+        listen  80;
+        servier_name    harbor.od.com;
+        
+        client_max_body_size    1000m;
+        
+        location / {
+                proxy_pass http://127.0.0.1:180;
+        }
+}
+
+#启动nginx
+systemctl start nginx
+system enable nginx
+
+#登陆harbor.od.com
+新建项目
+项目名称：pulic 公开
+#推送image实验
+docker pull nginx:1.7.9 #从docker.io/library/nginx:1.7.9 下载镜像
+docker tag xxxxxxx harbor.od.com/public/nginx:v1.7.9
+docker login harbor.od.com
+docker push harbor.od.com/public/nginx:v1.7.9
+
+
+#安装K8S组建 MASTER节点
+#etcd集群
+#创建基于根证书的config配置文件（10.4.7.200）
+
+1、集群规划
+10.4.7.12	etcd leader
+10.4.7.21	etcd follow
+10.4.7.22	etcd follow
+2、创建基于根证书的config配置文件主机操作
+cd /opt/certs/
+vi ca-config.json
+{
+  "signing": {
+    "default": {
+      "expiry": "175200h"
+    },
+    "profiles": {
+      "server": {
+        "expiry": "175200h",
+        "usages": [
+          "signing",
+          "key encipherment",
+          "server auth"
+        ]
+      },
+      "client": {
+        "expiry": "175200h",
+        "usages": [
+          "signing",
+          "key encipherment",
+          "server auth"
+        ]
+      },
+      "peer": {
+        "expiry": "175200h",
+        "usages": [
+          "signing",
+          "key encipherment",
+          "server auth"
+        ]
+      }
+    }
+  }
+}
+vi etcd-peer-csr.json
+{
+  "CN": "k8s-etcd",
+  "hosts": [
+    "10.4.7.11",
+    "10.4.7.12",
+    "10.4.7.21",
+    "10.4.7.22"
+  ],
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "CN",
+      "ST": "YN",
+      "L": "KM",
+      "O": "kevin",
+      "OU": "edu"
+    }
+  ]
+}
+#生成etcd证书和私钥
+cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=peer etcd-peer-csr.json |cfssl-json -bare etcd-peer
+#生成证书如下
+[root@yn101-100 certs]# ll
+total 36
+-rw-r--r-- 1 root root  610 Feb 17 22:54 ca-config.json
+-rw-r--r-- 1 root root  985 Feb 16 12:53 ca.csr
+-rw-r--r-- 1 root root  189 Feb 16 12:53 ca-csr.json
+-rw------- 1 root root 1679 Feb 16 12:53 ca-key.pem
+-rw-r--r-- 1 root root 1322 Feb 16 12:53 ca.pem
+-rw-r--r-- 1 root root 1054 Feb 17 22:56 etcd-peer.csr
+-rw-r--r-- 1 root root  300 Feb 17 22:37 etcd-peer-csr.json
+-rw------- 1 root root 1679 Feb 17 22:56 etcd-peer-key.pem
+-rw-r--r-- 1 root root 1395 Feb 17 22:56 etcd-peer.pem
+3、10.4.7.12主机操作
+给etcd创建一个用户
+
+useradd -s /sbin/nologin -M etcd
+[root@yn101-22 src]# id etcd
+uid=1000(etcd) gid=1000(etcd) groups=1000(etcd)
+#etcd下载地址，本机安装3.1.20版本
+https://github.com/etcd-io/etcd/releases/tag/v3.1.20
+#解压
+cd /opt/src
+tar xfv etcd-v3.1.20-linux-amd64.tar.gz -C /opt/
+mv etcd-v3.1.20-linux-amd64/ etcd-v3.1.20
+#软连接
+[root@yn101-22 opt]# ln -s /opt/etcd-v3.1.20/ /opt/etcd
+[root@yn101-22 opt]# ll
+total 0
+lrwxrwxrwx 1 root   root   18 Feb 17 23:05 etcd -> /opt/etcd-v3.1.20/
+drwxr-xr-x 3 478493 89939 123 Oct 11  2018 etcd-v3.1.20
+drwxr-xr-x 2 root   root   45 Feb 17 22:19 src
+#创建目录，拷贝证书和私钥
+mkdir -p /opt/etcd/certs /data/etcd /data/logs/etcd-server
+scp yn101-100:/opt/certs/ca.pem .
+scp yn101-100:/opt/certs/etcd-peer.pem .
+scp yn101-100:/opt/certs/etcd-peer-key.pem .
+创建etcd的启动脚本 vi /opt/etcd/etcd-server-startup.sh （修改ip及主机名）
+
+#!/bin/sh
+./etcd --name etcd-server-101-22 \
+        --data-dir /data/etcd/etcd-server \
+        --listen-peer-urls https://192.168.101.22:2380 \
+        --listen-client-urls https://192.168.101.22:2379,http://127.0.0.1:2379 \
+        --quota-backend-bytes 8000000000 \
+        --initial-advertise-peer-urls https://192.168.101.22:2380 \
+        --advertise-client-urls https://192.168.101.22:2379,http://127.0.0.1:2379 \
+        --initial-cluster etcd-server-101-22=https://192.168.101.22:2380,etcd-server-101-31=https://192.168.101.31:2380,etcd-server-101-32=https://192.168.101.32:2380 \
+        --ca-file ./certs/ca.pem \
+        --cert-file ./certs/etcd-peer.pem \
+        --key-file ./certs/etcd-peer-key.pem \
+        --client-cert-auth \
+        --trusted-ca-file ./certs/ca.pem \
+        --peer-ca-file ./certs/ca.pem \
+        --peer-cert-file ./certs/etcd-peer.pem \
+        --peer-key-file ./certs/etcd-peer-key.pem \
+        --peer-client-cert-auth \
+        --peer-trusted-ca-file ./certs/ca.pem \
+        --log-output stdout
+chmod +x etcd-server-startup.sh
+chown -R etcd.etcd /opt/etcd-v3.1.20/
+#更改后输出如下，文件为etcd用户
+[root@yn101-22 etcd]# ll
+total 30072
+drwxr-xr-x  2 etcd etcd       66 Feb 17 23:12 certs
+drwxr-xr-x 11 etcd etcd     4096 Oct 11  2018 Documentation
+-rwxr-xr-x  1 etcd etcd 16406432 Oct 11  2018 etcd
+-rwxr-xr-x  1 etcd etcd 14327712 Oct 11  2018 etcdctl
+-rwxr-xr-x  1 etcd etcd      876 Feb 17 23:30 etcd-server-startup.sh
+-rw-r--r--  1 etcd etcd    32632 Oct 11  2018 README-etcdctl.md
+-rw-r--r--  1 etcd etcd     5878 Oct 11  2018 README.md
+-rw-r--r--  1 etcd etcd     7892 Oct 11  2018 READMEv2-etcdctl.md
+[root@yn101-22 etcd]# chown -R etcd.etcd /data/etcd/
+[root@yn101-22 etcd]# chown -R etcd.etcd /data/logs/etcd-server/
+#安装管理后台进程软件，etcd后台启动如果进程掉了会自动启动
+yum install supervisor -y
+[root@yn101-22 etcd]# systemctl start supervisord
+[root@yn101-22 etcd]# systemctl enable supervisord
+Created symlink from /etc/systemd/system/multi-user.target.wants/supervisord.service to /usr/lib/systemd/system/supervisord.service.
+#创建supervisor的启动文件
+vi /etc/supervisord.d/etcd-server.ini
+#内容如下
+[program:etcd-server-101-22]
+command=/opt/etcd/etcd-server-startup.sh
+numprocs=1
+directory=/opt/etcd
+autostart=true
+autorestart=true
+startsecs=30
+startretries=3
+exitcodes=0,2
+stopsignal=QUIT
+stopwaitsecs=10
+user=etcd
+redirect_stderr=true
+stdout_logfile=/data/logs/etcd-server/etcd.stdout.log
+stdout_logfile_maxbytes=64MB
+stdout_logfile_backups=4
+stdout_capture_maxbytes=1MB
+stdout_events_enabled=false
+[root@yn101-22 etcd]# supervisorctl update
+etcd-server-101-22: added process group
+#查看启动状态
+[root@yn101-22 etcd]# supervisorctl status
+etcd-server-101-22               RUNNING   pid 11849, uptime 0:01:31
+#查看启动日志
+tail -fn 200 /data/logs/etcd-server/etcd.stdout.log
+#为running状态，监听2379和2380端口才算启动成功
+[root@yn101-22 etcd]# netstat -luntp | grep etcd
+tcp        0      0 192.168.101.22:2379     0.0.0.0:*               LISTEN      11850/./etcd        
+tcp        0      0 127.0.0.1:2379          0.0.0.0:*               LISTEN      11850/./etcd        
+tcp        0      0 192.168.101.22:2380     0.0.0.0:*               LISTEN      11850/./etcd 
+4、YN101-31.host.com安装etcd
+cd /opt/src
+tar xfv etcd-v3.1.20-linux-amd64.tar.gz -C /opt/
+mv etcd-v3.1.20-linux-amd64/ etcd-v3.1.20
+#软连接
+ln -s /opt/etcd-v3.1.20/ /opt/etcd
+#创建一个etcd的用户
+useradd -s /sbin/nologin -M etcd
+#创建目录，拷贝证书和私钥
+mkdir -p /opt/etcd/certs /data/etcd /data/logs/etcd-server
+scp yn101-100:/opt/certs/ca.pem .
+scp yn101-100:/opt/certs/etcd-peer.pem .
+scp yn101-100:/opt/certs/etcd-peer-key.pem .
+创建etcd的启动脚本 vi /opt/etcd/etcd-server-startup.sh
+
+#!/bin/sh
+./etcd --name etcd-server-101-32 \
+        --data-dir /data/etcd/etcd-server \
+        --listen-peer-urls https://192.168.101.32:2380 \
+        --listen-client-urls https://192.168.101.32:2379,http://127.0.0.1:2379 \
+        --quota-backend-bytes 8000000000 \
+        --initial-advertise-peer-urls https://192.168.101.32:2380 \
+        --advertise-client-urls https://192.168.101.32:2379,http://127.0.0.1:2379 \
+        --initial-cluster etcd-server-101-22=https://192.168.101.22:2380,etcd-server-101-31=https://192.168.101.31:2380,etcd-server-101-32=https://192.168.101.32:2380 \
+        --ca-file ./certs/ca.pem \
+        --cert-file ./certs/etcd-peer.pem \
+        --key-file ./certs/etcd-peer-key.pem \
+        --client-cert-auth \
+        --trusted-ca-file ./certs/ca.pem \
+        --peer-ca-file ./certs/ca.pem \
+        --peer-cert-file ./certs/etcd-peer.pem \
+        --peer-key-file ./certs/etcd-peer-key.pem \
+        --peer-client-cert-auth \
+        --peer-trusted-ca-file ./certs/ca.pem \
+        --log-output stdout
+chmod +x etcd-server-startup.sh
+#更改文件为etcd用户权限
+chown -R etcd.etcd /opt/etcd-v3.1.20/
+chown -R etcd.etcd /data/etcd/
+chown -R etcd.etcd /data/logs/etcd-server/
+#安装管理后台进程软件，etcd后台启动如果进程掉了会自动启动
+yum install supervisor -y
+[root@yn101-22 etcd]# systemctl start supervisord
+[root@yn101-22 etcd]# systemctl enable supervisord
+Created symlink from /etc/systemd/system/multi-user.target.wants/supervisord.service to /usr/lib/systemd/system/supervisord.service.
+#创建supervisor的启动文件
+vi /etc/supervisord.d/etcd-server.ini
+#内容如下
+[program:etcd-server-101-32]
+command=/opt/etcd/etcd-server-startup.sh
+numprocs=1
+directory=/opt/etcd
+autostart=true
+autorestart=true
+startsecs=30
+startretries=3
+exitcodes=0,2
+stopsignal=QUIT
+stopwaitsecs=10
+user=etcd
+redirect_stderr=true
+stdout_logfile=/data/logs/etcd-server/etcd.stdout.log
+stdout_logfile_maxbytes=64MB
+stdout_logfile_backups=4
+stdout_capture_maxbytes=1MB
+stdout_events_enabled=false
+[root@yn101-22 etcd]# supervisorctl update
+etcd-server-101-22: added process group
+#查看启动状态
+[root@yn101-22 etcd]# supervisorctl status
+etcd-server-101-22               RUNNING   pid 11849, uptime 0:01:31
+#查看启动日志
+tail -fn 200 /data/logs/etcd-server/etcd.stdout.log
+#为running状态，监听2379和2380端口才算启动成功
+[root@yn101-22 etcd]# netstat -luntp | grep etcd
+tcp        0      0 192.168.101.22:2379     0.0.0.0:*               LISTEN      11850/./etcd        
+tcp        0      0 127.0.0.1:2379          0.0.0.0:*               LISTEN      11850/./etcd        
+tcp        0      0 192.168.101.22:2380     0.0.0.0:*               LISTEN      11850/./etcd 
+#全部状态为running时，可在任意节点查看etcd健康状态
+[root@yn101-22 etcd]# supervisorctl status
+etcd-server-101-22               RUNNING   pid 11849, uptime 0:01:31
+#健康状态监测
+cd /opt/etcd
+./etcdctl cluster-health
 
 
 
