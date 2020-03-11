@@ -146,6 +146,25 @@ vi /etc/docker/daemon.json
 #启动docker
 systemctl start docker
 
+#部署docker私有仓库harbor（1.7.5以后版本 之前有安全漏洞）（依赖docker-compose）
+yum install docker-compose -y
+wget https://github.com/goharbor/harbor/releases/download/v1.8.5/harbor-offline-installer-v1.8.5.tgz
+tar xvf harbor-offline-installer-v1.8.5.tgz -C /opt 
+cd /opt/harbor
+vi harbor.yml
+#修改hostname 为业务域
+hostname: harbor.od.com
+#修改端口,避免冲突（原为80）
+port: 180
+#修改管理员密码
+harbor_admin_password: 
+#修改log地址
+location: /data/habor/logs
+#修改docker镜像存放地址
+/data/volume: /data/docker
+
+sh /opt/harbor/install.sh
+
 
 
 
