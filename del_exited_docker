@@ -1,0 +1,1 @@
+for i in `docker ps -a|grep -t exit|sed '1d'|awk '{print $1}'`;do docker rm $1;done
